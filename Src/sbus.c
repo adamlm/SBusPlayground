@@ -9,7 +9,7 @@
 #include <stm32f4xx_hal.h>
 
 extern osEventFlagsId_t SBusPutHandle;
-extern osSemaphoreId_t SBusDataHandle;
+extern osSemaphoreId_t SBusFrameHandle;
 
 extern UART_HandleTypeDef huart4;
 
@@ -39,9 +39,7 @@ void SBus_ParseByte(uint8_t byte) {
 
         if (frameIndex >= SBUS_FRAME_SIZE) {
             if (byte == SBUS_END_BYTE) {
-//                osEventFlagsSet(SBusPutHandle, 0x00000001U);
-                osSemaphoreRelease(SBusDataHandle);
-
+                osSemaphoreRelease(SBusFrameHandle);
             }
 
             frameIndex = 0U;
@@ -90,5 +88,14 @@ void SBus_DecodeFrame(void) {
 }
 
 uint16_t SBus_GetChannel(uint8_t channel) {
-    return packet.channel0;
+    switch (channel) {
+        case 0U:
+            return packet.channel0;
+            break;
+        case 1U:
+            return packet.channel1;
+        default:
+            return 0;
+    }
+//    return packet.channel0;
 }

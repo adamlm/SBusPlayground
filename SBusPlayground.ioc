@@ -1,8 +1,8 @@
 #MicroXplorer Configuration settings - do not modify
-FREERTOS.BinarySemaphores01=SBusData,Dynamic,NULL
+FREERTOS.BinarySemaphores01=SBusFrame,Dynamic,NULL;SBusPacket,Dynamic,NULL
 FREERTOS.FootprintOK=true
 FREERTOS.IPParameters=Tasks01,FootprintOK,BinarySemaphores01,configCHECK_FOR_STACK_OVERFLOW
-FREERTOS.Tasks01=defaultTask,8,256,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;flashBlue,8,256,StartFlashBlue,Default,NULL,Dynamic,NULL,NULL;parseSbus,16,512,StartParseSbus,Default,NULL,Dynamic,NULL,NULL
+FREERTOS.Tasks01=defaultTask,8,256,StartDefaultTask,Default,NULL,Dynamic,NULL,NULL;flashBlue,8,256,StartFlashBlue,Default,NULL,Dynamic,NULL,NULL;parseSbus,24,512,StartParseSbus,Default,NULL,Dynamic,NULL,NULL;driveServo,16,512,StartDriveServo,Default,NULL,Dynamic,NULL,NULL;driveEsc,16,256,StartDriveEsc,Default,NULL,Dynamic,NULL,NULL
 FREERTOS.configCHECK_FOR_STACK_OVERFLOW=2
 File.Version=6
 KeepUserPlacement=false

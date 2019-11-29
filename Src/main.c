@@ -56,7 +56,10 @@ UART_HandleTypeDef huart4;
 osThreadId_t defaultTaskHandle;
 osThreadId_t flashBlueHandle;
 osThreadId_t parseSbusHandle;
-osSemaphoreId_t SBusDataHandle;
+osThreadId_t driveServoHandle;
+osThreadId_t driveEscHandle;
+osSemaphoreId_t SBusFrameHandle;
+osSemaphoreId_t SBusPacketHandle;
 /* USER CODE BEGIN PV */
 osEventFlagsId_t SBusPutHandle;
 /* USER CODE END PV */
@@ -70,6 +73,8 @@ static void MX_TIM2_Init(void);
 void StartDefaultTask(void *argument);
 void StartFlashBlue(void *argument);
 void StartParseSbus(void *argument);
+void StartDriveServo(void *argument);
+void StartDriveEsc(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -124,11 +129,17 @@ int main(void)
   /* USER CODE END RTOS_MUTEX */
 
   /* Create the semaphores(s) */
-  /* definition and creation of SBusData */
-  const osSemaphoreAttr_t SBusData_attributes = {
-    .name = "SBusData"
+  /* definition and creation of SBusFrame */
+  const osSemaphoreAttr_t SBusFrame_attributes = {
+    .name = "SBusFrame"
   };
-  SBusDataHandle = osSemaphoreNew(1, 1, &SBusData_attributes);
+  SBusFrameHandle = osSemaphoreNew(1, 1, &SBusFrame_attributes);
+
+  /* definition and creation of SBusPacket */
+  const osSemaphoreAttr_t SBusPacket_attributes = {
+    .name = "SBusPacket"
+  };
+  SBusPacketHandle = osSemaphoreNew(1, 1, &SBusPacket_attributes);
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
@@ -162,10 +173,26 @@ int main(void)
   /* definition and creation of parseSbus */
   const osThreadAttr_t parseSbus_attributes = {
     .name = "parseSbus",
-    .priority = (osPriority_t) osPriorityBelowNormal,
+    .priority = (osPriority_t) osPriorityNormal,
     .stack_size = 512
   };
   parseSbusHandle = osThreadNew(StartParseSbus, NULL, &parseSbus_attributes);
+
+  /* definition and creation of driveServo */
+  const osThreadAttr_t driveServo_attributes = {
+    .name = "driveServo",
+    .priority = (osPriority_t) osPriorityBelowNormal,
+    .stack_size = 512
+  };
+  driveServoHandle = osThreadNew(StartDriveServo, NULL, &driveServo_attributes);
+
+  /* definition and creation of driveEsc */
+  const osThreadAttr_t driveEsc_attributes = {
+    .name = "driveEsc",
+    .priority = (osPriority_t) osPriorityBelowNormal,
+    .stack_size = 256
+  };
+  driveEscHandle = osThreadNew(StartDriveEsc, NULL, &driveEsc_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -439,27 +466,70 @@ void StartParseSbus(void *argument)
   /* USER CODE BEGIN StartParseSbus */
   PCA9685_Reset(&hi2c1);
   PCA9685_SetPWMFreq(&hi2c1, 60.0f);
-  osSemaphoreAcquire(SBusDataHandle, 0U);
+  osSemaphoreAcquire(SBusFrameHandle, 0U);
 
   /* Infinite loop */
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-//    osEventFlagsWait(SBusPutHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
     HAL_GPIO_WritePin(TST_SIG_GPIO_Port, TST_SIG_Pin, GPIO_PIN_RESET);
-    osSemaphoreAcquire(SBusDataHandle, osWaitForever);
+    osSemaphoreAcquire(SBusFrameHandle, osWaitForever);
     HAL_GPIO_WritePin(TST_SIG_GPIO_Port, TST_SIG_Pin, GPIO_PIN_SET);
 
     SBus_DecodeFrame();
-    uint16_t val = SBus_GetChannel(0U);
-    val = sbusToPwm(val);
-    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
+    osSemaphoreRelease(SBusPacketHandle);
 //    HAL_GPIO_TogglePin(TST_SIG_GPIO_Port, TST_SIG_Pin);
 
   }
 #pragma clang diagnostic pop
   /* USER CODE END StartParseSbus */
+}
+
+/* USER CODE BEGIN Header_StartDriveServo */
+/**
+* @brief Function implementing the driveServo thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDriveServo */
+void StartDriveServo(void *argument)
+{
+  /* USER CODE BEGIN StartDriveServo */
+  /* Infinite loop */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+  for(;;)
+  {
+    osSemaphoreAcquire(SBusPacketHandle, osWaitForever);
+    uint16_t val = SBus_GetChannel(1U);
+    val = sbusToPwm(val);
+    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
+    osDelay(50 / (portTICK_RATE_MS));
+  }
+#pragma clang diagnostic pop
+  /* USER CODE END StartDriveServo */
+}
+
+/* USER CODE BEGIN Header_StartDriveEsc */
+/**
+* @brief Function implementing the driveEsc thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartDriveEsc */
+void StartDriveEsc(void *argument)
+{
+  /* USER CODE BEGIN StartDriveEsc */
+  /* Infinite loop */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+  for(;;)
+  {
+    osDelay(1);
+  }
+#pragma clang diagnostic pop
+  /* USER CODE END StartDriveEsc */
 }
 
 /**
