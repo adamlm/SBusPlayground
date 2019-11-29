@@ -24,6 +24,9 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
+#include <string.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 
@@ -52,6 +55,7 @@ I2C_HandleTypeDef hi2c1;
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart4;
+UART_HandleTypeDef huart2;
 
 osThreadId_t defaultTaskHandle;
 osThreadId_t flashBlueHandle;
@@ -63,6 +67,7 @@ osSemaphoreId_t SBusFrameHandle;
 osSemaphoreId_t SBusPacketHandle;
 /* USER CODE BEGIN PV */
 osEventFlagsId_t SBusPacketEvtHandle;
+static char buff[40 * 5];
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -71,6 +76,7 @@ static void MX_GPIO_Init(void);
 static void MX_UART4_Init(void);
 static void MX_I2C1_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART2_UART_Init(void);
 void StartDefaultTask(void *argument);
 void StartFlashBlue(void *argument);
 void StartParseSbus(void *argument);
@@ -118,8 +124,10 @@ int main(void)
   MX_UART4_Init();
   MX_I2C1_Init();
   MX_TIM2_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+    sprintf(buff, "Hi there \r\n");
+    HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 5000);
   /* USER CODE END 2 */
 
   osKernelInitialize();
@@ -190,7 +198,7 @@ int main(void)
   const osThreadAttr_t driveServo_attributes = {
     .name = "driveServo",
     .priority = (osPriority_t) osPriorityBelowNormal,
-    .stack_size = 512
+    .stack_size = 1024
   };
   driveServoHandle = osThreadNew(StartDriveServo, NULL, &driveServo_attributes);
 
@@ -376,6 +384,39 @@ static void MX_UART4_Init(void)
 }
 
 /**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 9600;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -518,7 +559,13 @@ void StartDriveServo(void *argument)
 //    osMutexAcquire(i2cMutexHandle, osWaitForever);
 //    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
 //    osMutexRelease(i2cMutexHandle);
-    osDelay(1000 / (portTICK_RATE_MS));
+
+    sprintf(buff, "\r\nTask           \tAbs Time\t%% Time\r\n****************************************\r\n");
+    HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 5000);
+    vTaskGetRunTimeStats(buff);
+//    sprintf(buff, "Hi there \r\n");
+    HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 5000);
+    osDelay(5000 / (portTICK_RATE_MS));
   }
 #pragma clang diagnostic pop
   /* USER CODE END StartDriveServo */
@@ -539,9 +586,9 @@ void StartDriveEsc(void *argument)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
+//    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
     osEventFlagsWait(SBusPacketEvtHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
-    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
+//    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
     uint16_t val = SBus_GetChannel(0U);
     val = sbusToPwm(val);
 //    osMutexAcquire(i2cMutexHandle, osWaitForever);

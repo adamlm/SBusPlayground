@@ -26,6 +26,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "sbus.h"
+#include "stats.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -59,11 +60,12 @@
 /* USER CODE END 0 */
 
 /* External variables --------------------------------------------------------*/
+extern TIM_HandleTypeDef htim2;
 extern UART_HandleTypeDef huart4;
 extern TIM_HandleTypeDef htim1;
 
 /* USER CODE BEGIN EV */
-
+//extern uint32_t runtimeCounter;
 /* USER CODE END EV */
 
 /******************************************************************************/
@@ -174,6 +176,23 @@ void TIM1_UP_TIM10_IRQHandler(void)
   /* USER CODE BEGIN TIM1_UP_TIM10_IRQn 1 */
 
   /* USER CODE END TIM1_UP_TIM10_IRQn 1 */
+}
+
+/**
+  * @brief This function handles TIM2 global interrupt.
+  */
+void TIM2_IRQHandler(void)
+{
+  /* USER CODE BEGIN TIM2_IRQn 0 */
+  if (__HAL_TIM_GET_FLAG(&htim2,  TIM_FLAG_UPDATE) != RESET) {
+      __HAL_TIM_CLEAR_IT(&htim2, TIM_IT_UPDATE);
+//      __HAL_TIM_CLEAR_FLAG(&htim2, TIM_FLAG_UPDATE);
+      incRuntimeCounter();
+  }
+  /* USER CODE END TIM2_IRQn 0 */
+  /* USER CODE BEGIN TIM2_IRQn 1 */
+
+  /* USER CODE END TIM2_IRQn 1 */
 }
 
 /**
