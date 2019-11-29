@@ -58,10 +58,11 @@ osThreadId_t flashBlueHandle;
 osThreadId_t parseSbusHandle;
 osThreadId_t driveServoHandle;
 osThreadId_t driveEscHandle;
+osMutexId_t i2cMutexHandle;
 osSemaphoreId_t SBusFrameHandle;
 osSemaphoreId_t SBusPacketHandle;
 /* USER CODE BEGIN PV */
-osEventFlagsId_t SBusPutHandle;
+osEventFlagsId_t SBusPacketEvtHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -123,9 +124,16 @@ int main(void)
 
   osKernelInitialize();
 
+  /* Create the mutex(es) */
+  /* definition and creation of i2cMutex */
+  const osMutexAttr_t i2cMutex_attributes = {
+    .name = "i2cMutex"
+  };
+  i2cMutexHandle = osMutexNew(&i2cMutex_attributes);
+
   /* USER CODE BEGIN RTOS_MUTEX */
   /* add mutexes, ... */
-  SBusPutHandle = osEventFlagsNew(NULL);
+  SBusPacketEvtHandle = osEventFlagsNew(NULL);
   /* USER CODE END RTOS_MUTEX */
 
   /* Create the semaphores(s) */
@@ -190,7 +198,7 @@ int main(void)
   const osThreadAttr_t driveEsc_attributes = {
     .name = "driveEsc",
     .priority = (osPriority_t) osPriorityBelowNormal,
-    .stack_size = 256
+    .stack_size = 512
   };
   driveEscHandle = osThreadNew(StartDriveEsc, NULL, &driveEsc_attributes);
 
@@ -382,17 +390,17 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(Blue_LED_GPIO_Port, Blue_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TST_SIG_GPIO_Port, TST_SIG_Pin, GPIO_PIN_RESET);
 
-  /*Configure GPIO pin : Blue_LED_Pin */
-  GPIO_InitStruct.Pin = Blue_LED_Pin;
+  /*Configure GPIO pins : Green_LED_Pin Red_LED_Pin Blue_LED_Pin */
+  GPIO_InitStruct.Pin = Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
-  HAL_GPIO_Init(Blue_LED_GPIO_Port, &GPIO_InitStruct);
+  HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
   /*Configure GPIO pin : TST_SIG_Pin */
   GPIO_InitStruct.Pin = TST_SIG_Pin;
@@ -478,8 +486,8 @@ void StartParseSbus(void *argument)
     HAL_GPIO_WritePin(TST_SIG_GPIO_Port, TST_SIG_Pin, GPIO_PIN_SET);
 
     SBus_DecodeFrame();
-    osSemaphoreRelease(SBusPacketHandle);
-//    HAL_GPIO_TogglePin(TST_SIG_GPIO_Port, TST_SIG_Pin);
+//    osSemaphoreRelease(SBusPacketHandle);
+    osEventFlagsSet(SBusPacketEvtHandle, 0x00000001U);
 
   }
 #pragma clang diagnostic pop
@@ -501,11 +509,16 @@ void StartDriveServo(void *argument)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-    osSemaphoreAcquire(SBusPacketHandle, osWaitForever);
-    uint16_t val = SBus_GetChannel(1U);
-    val = sbusToPwm(val);
-    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
-    osDelay(50 / (portTICK_RATE_MS));
+//    osSemaphoreAcquire(SBusPacketHandle, osWaitForever);
+//    HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_RESET);
+//    osEventFlagsWait(SBusPacketEvtHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
+//    HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_SET);
+//    uint16_t val = SBus_GetChannel(1U);
+//    val = sbusToPwm(val);
+//    osMutexAcquire(i2cMutexHandle, osWaitForever);
+//    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
+//    osMutexRelease(i2cMutexHandle);
+    osDelay(1000 / (portTICK_RATE_MS));
   }
 #pragma clang diagnostic pop
   /* USER CODE END StartDriveServo */
@@ -526,7 +539,19 @@ void StartDriveEsc(void *argument)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-    osDelay(1);
+    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
+    osEventFlagsWait(SBusPacketEvtHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
+    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
+    uint16_t val = SBus_GetChannel(0U);
+    val = sbusToPwm(val);
+//    osMutexAcquire(i2cMutexHandle, osWaitForever);
+    PCA9685_SetPWM(&hi2c1, DRIVE_ESC_PIN, 0, val);
+//    osMutexRelease(i2cMutexHandle);
+
+      val = SBus_GetChannel(1U);
+      val = sbusToPwm(val);
+//    osMutexAcquire(i2cMutexHandle, osWaitForever);
+      PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
   }
 #pragma clang diagnostic pop
   /* USER CODE END StartDriveEsc */

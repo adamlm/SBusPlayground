@@ -8,7 +8,6 @@
 #include <stm32f407xx.h>
 #include <stm32f4xx_hal.h>
 
-extern osEventFlagsId_t SBusPutHandle;
 extern osSemaphoreId_t SBusFrameHandle;
 
 extern UART_HandleTypeDef huart4;

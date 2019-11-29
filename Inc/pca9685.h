@@ -29,6 +29,9 @@
 #define STEER_SERVO_NEUTRAL 352U
 #define STEER_SERVO_MAX STEER_SERVO_NEUTRAL + 25U
 
+// ESC Defaults
+#define DRIVE_ESC_PIN 14U  // ESC ping on PCA9685
+
 void PCA9685_Reset(I2C_HandleTypeDef *hi2c);
 void PCA9685_SetPWMFreq(I2C_HandleTypeDef *hi2c, float freq);
 void PCA9685_SetPWM(I2C_HandleTypeDef *hi2c, uint8_t num, uint16_t on, uint16_t off);
