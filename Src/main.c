@@ -62,12 +62,18 @@ osThreadId_t flashBlueHandle;
 osThreadId_t parseSbusHandle;
 osThreadId_t driveServoHandle;
 osThreadId_t driveEscHandle;
+osThreadId_t senseDistHandle;
 osMutexId_t i2cMutexHandle;
 osSemaphoreId_t SBusFrameHandle;
 osSemaphoreId_t SBusPacketHandle;
 /* USER CODE BEGIN PV */
 osEventFlagsId_t SBusPacketEvtHandle;
-static char buff[40 * 5];
+static char buff[40 * 6];
+static uint32_t start;
+static uint32_t end;
+static float dists[10] = {0.0f};
+static uint8_t distIndex = 0U;
+static float distAvg = 0.0f;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +88,7 @@ void StartFlashBlue(void *argument);
 void StartParseSbus(void *argument);
 void StartDriveServo(void *argument);
 void StartDriveEsc(void *argument);
+void StartSenseDist(void *argument);
 
 /* USER CODE BEGIN PFP */
 
@@ -209,6 +216,14 @@ int main(void)
     .stack_size = 512
   };
   driveEscHandle = osThreadNew(StartDriveEsc, NULL, &driveEsc_attributes);
+
+  /* definition and creation of senseDist */
+  const osThreadAttr_t senseDist_attributes = {
+    .name = "senseDist",
+    .priority = (osPriority_t) osPriorityNormal,
+    .stack_size = 256
+  };
+  senseDistHandle = osThreadNew(StartSenseDist, NULL, &senseDist_attributes);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
@@ -429,12 +444,23 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOD_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOD, Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOD, DIST_SIG_Pin|Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(TST_SIG_GPIO_Port, TST_SIG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOE, DIST_TRIG_Pin|ACT_SIG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : DIST_SIG_Pin */
+  GPIO_InitStruct.Pin = DIST_SIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(DIST_SIG_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pins : Green_LED_Pin Red_LED_Pin Blue_LED_Pin */
   GPIO_InitStruct.Pin = Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin;
@@ -443,12 +469,32 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOD, &GPIO_InitStruct);
 
+  /*Configure GPIO pin : DIST_ECHO_Pin */
+  GPIO_InitStruct.Pin = DIST_ECHO_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(DIST_ECHO_GPIO_Port, &GPIO_InitStruct);
+
   /*Configure GPIO pin : TST_SIG_Pin */
   GPIO_InitStruct.Pin = TST_SIG_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   HAL_GPIO_Init(TST_SIG_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : DIST_TRIG_Pin */
+  GPIO_InitStruct.Pin = DIST_TRIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(DIST_TRIG_GPIO_Port, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : ACT_SIG_Pin */
+  GPIO_InitStruct.Pin = ACT_SIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(ACT_SIG_GPIO_Port, &GPIO_InitStruct);
 
 }
 
@@ -586,8 +632,9 @@ void StartDriveEsc(void *argument)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-//    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(ACT_SIG_GPIO_Port, ACT_SIG_Pin, GPIO_PIN_RESET);
     osEventFlagsWait(SBusPacketEvtHandle, 0x00000001U, osFlagsWaitAny, osWaitForever);
+      HAL_GPIO_WritePin(ACT_SIG_GPIO_Port, ACT_SIG_Pin, GPIO_PIN_SET);
 //    HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
     uint16_t val = SBus_GetChannel(0U);
     val = sbusToPwm(val);
@@ -602,6 +649,52 @@ void StartDriveEsc(void *argument)
   }
 #pragma clang diagnostic pop
   /* USER CODE END StartDriveEsc */
+}
+
+/* USER CODE BEGIN Header_StartSenseDist */
+/**
+* @brief Function implementing the senseDist thread.
+* @param argument: Not used
+* @retval None
+*/
+/* USER CODE END Header_StartSenseDist */
+void StartSenseDist(void *argument)
+{
+  /* USER CODE BEGIN StartSenseDist */
+  /* Infinite loop */
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wmissing-noreturn"
+  for(;;)
+  {
+      HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_RESET);
+      osDelay(100 / (portTICK_RATE_MS));
+      HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_SET);
+//    HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_SET);
+//    delayUs(10);
+//    HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_RESET);
+//
+//    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_RESET);
+//    start = __HAL_TIM_GET_COUNTER(&htim2);
+//    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_SET);
+//    end = __HAL_TIM_GET_COUNTER(&htim2);
+//
+//    dists[distIndex] = (float)(end - start) / 58.0f;
+//    distIndex = (distIndex + 1) % 10;
+//    distAvg = (dists[0U] + dists[1U] + dists[2U] + dists[3U] + dists[4U]
+//            + dists[5U] + dists[6U] + dists[7U] + dists[8U] + dists[9U]) / 10;
+//
+//    if (distAvg < 30.0f) {
+//      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
+//      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_SET);
+//    } else {
+//      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
+//      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_RESET);
+//    }
+
+    osDelay(60 / (portTICK_RATE_MS));
+  }
+#pragma clang diagnostic pop
+  /* USER CODE END StartSenseDist */
 }
 
 /**

@@ -8,5 +8,6 @@
 #include <stdint.h>
 
 uint16_t sbusToPwm(uint16_t val);
+void delayUs(uint32_t val);
 
 #endif //SBUSPLAYGROUND_UTILS_H
