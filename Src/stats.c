@@ -16,9 +16,9 @@ void configureTimerForRunTimeStats(void) {
 }
 
 unsigned long getRunTimeCounterValue(void) {
-    return runtimeCounter;
+    return runtimeCounter + TIM2->CNT;
 }
 
 void incRuntimeCounter(void) {
-    runtimeCounter++;
+    runtimeCounter+=20000;
 }

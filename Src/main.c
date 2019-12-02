@@ -221,7 +221,7 @@ int main(void)
   const osThreadAttr_t senseDist_attributes = {
     .name = "senseDist",
     .priority = (osPriority_t) osPriorityNormal,
-    .stack_size = 256
+    .stack_size = 1024
   };
   senseDistHandle = osThreadNew(StartSenseDist, NULL, &senseDist_attributes);
 
@@ -447,6 +447,9 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOE_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(STAT_SIG_GPIO_Port, STAT_SIG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOD, DIST_SIG_Pin|Green_LED_Pin|Red_LED_Pin|Blue_LED_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
@@ -454,6 +457,13 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOE, DIST_TRIG_Pin|ACT_SIG_Pin, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : STAT_SIG_Pin */
+  GPIO_InitStruct.Pin = STAT_SIG_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
+  HAL_GPIO_Init(STAT_SIG_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : DIST_SIG_Pin */
   GPIO_InitStruct.Pin = DIST_SIG_Pin;
@@ -606,11 +616,13 @@ void StartDriveServo(void *argument)
 //    PCA9685_SetPWM(&hi2c1, STEER_SERVO_PIN, 0, val);
 //    osMutexRelease(i2cMutexHandle);
 
+    HAL_GPIO_WritePin(STAT_SIG_GPIO_Port, STAT_SIG_Pin, GPIO_PIN_SET);
     sprintf(buff, "\r\nTask           \tAbs Time\t%% Time\r\n****************************************\r\n");
     HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 5000);
     vTaskGetRunTimeStats(buff);
 //    sprintf(buff, "Hi there \r\n");
     HAL_UART_Transmit(&huart2, (uint8_t *)buff, strlen(buff), 5000);
+      HAL_GPIO_WritePin(STAT_SIG_GPIO_Port, STAT_SIG_Pin, GPIO_PIN_RESET);
     osDelay(5000 / (portTICK_RATE_MS));
   }
 #pragma clang diagnostic pop
@@ -666,31 +678,44 @@ void StartSenseDist(void *argument)
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
   for(;;)
   {
-      HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_RESET);
-      osDelay(100 / (portTICK_RATE_MS));
-      HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_SET);
-//    HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_SET);
-//    delayUs(10);
-//    HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_RESET);
-//
-//    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_RESET);
-//    start = __HAL_TIM_GET_COUNTER(&htim2);
-//    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_SET);
-//    end = __HAL_TIM_GET_COUNTER(&htim2);
-//
-//    dists[distIndex] = (float)(end - start) / 58.0f;
-//    distIndex = (distIndex + 1) % 10;
-//    distAvg = (dists[0U] + dists[1U] + dists[2U] + dists[3U] + dists[4U]
-//            + dists[5U] + dists[6U] + dists[7U] + dists[8U] + dists[9U]) / 10;
-//
-//    if (distAvg < 30.0f) {
-//      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
-//      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_SET);
-//    } else {
-//      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
-//      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_RESET);
-//    }
 
+//      osDelay(100 / (portTICK_RATE_MS));
+    HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_SET);
+
+    HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_SET);
+    delayUs(10);
+      HAL_GPIO_WritePin(DIST_TRIG_GPIO_Port, DIST_TRIG_Pin, GPIO_PIN_RESET);
+
+    start = getRunTimeCounterValue();
+    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_RESET) {
+        if (getRunTimeCounterValue() - start > 10000) {
+            break;
+        }
+    };
+//    start = __HAL_TIM_GET_COUNTER(&htim2);
+    start = getRunTimeCounterValue();
+    while (HAL_GPIO_ReadPin(DIST_ECHO_GPIO_Port, DIST_ECHO_Pin) == GPIO_PIN_SET) {
+        if (getRunTimeCounterValue() - start > 10000) {
+            break;
+        }
+    }
+//    end = __HAL_TIM_GET_COUNTER(&htim2);
+    end = getRunTimeCounterValue();
+
+    dists[distIndex] = (float)(end - start) / 58.0f;
+    distIndex = (distIndex + 1) % 10;
+    distAvg = (dists[0U] + dists[1U] + dists[2U] + dists[3U] + dists[4U]
+            + dists[5U] + dists[6U] + dists[7U] + dists[8U] + dists[9U]) / 10;
+
+    if (distAvg < 30.0f) {
+      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_RESET);
+      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_SET);
+    } else {
+      HAL_GPIO_WritePin(Green_LED_GPIO_Port, Green_LED_Pin, GPIO_PIN_SET);
+      HAL_GPIO_WritePin(Red_LED_GPIO_Port, Red_LED_Pin, GPIO_PIN_RESET);
+    }
+
+    HAL_GPIO_WritePin(DIST_SIG_GPIO_Port, DIST_SIG_Pin, GPIO_PIN_RESET);
     osDelay(60 / (portTICK_RATE_MS));
   }
 #pragma clang diagnostic pop
